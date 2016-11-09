@@ -53,8 +53,8 @@ struct image_t {
 
 /* Image point structure */
 struct point_t {
-  uint32_t x;             ///< The x coordinate of the point
-  uint32_t y;             ///< The y coordinate of the point
+  int32_t x;             ///< The x coordinate of the point
+  int32_t y;             ///< The y coordinate of the point
 };
 
 /* Vector structure for point differences */
@@ -79,9 +79,11 @@ struct crop_t {
 };
 
 /* Usefull image functions */
-void image_add_border(struct image_t *input, struct image_t *output, uint8_t border_size);
+#ifdef LINUX
 void image_create(struct image_t *img, uint16_t width, uint16_t height, enum image_type type);
 void image_free(struct image_t *img);
+#endif
+
 void image_copy(struct image_t *input, struct image_t *output);
 void image_switch(struct image_t *a, struct image_t *b);
 void image_to_grayscale(struct image_t *input, struct image_t *output);
@@ -96,8 +98,13 @@ uint32_t image_difference(struct image_t *img_a, struct image_t *img_b, struct i
 int32_t image_multiply(struct image_t *img_a, struct image_t *img_b, struct image_t *mult);
 void image_show_points(struct image_t *img, struct point_t *points, uint16_t points_cnt);
 void image_show_flow(struct image_t *img, struct flow_t *vectors, uint16_t points_cnt, uint8_t subpixel_factor);
-void image_draw_line(struct image_t *img, struct point_t *from, struct point_t *to);
+void image_draw_line(struct image_t *img, struct point_t *from, struct point_t *to, uint8_t *color);
+void image_draw_circle(struct image_t *img, struct point_t *center, uint16_t radius, uint8_t *color);
+
+#ifdef LINUX
+void image_add_border(struct image_t *input, struct image_t *output, uint8_t border_size);
 void pyramid_next_level(struct image_t *input, struct image_t *output, uint8_t border_size);
 void pyramid_build(struct image_t *input, struct image_t *output_array, uint8_t pyr_level, uint8_t border_size);
+#endif
 
 #endif
