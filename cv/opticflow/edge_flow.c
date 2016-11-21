@@ -320,15 +320,15 @@ void draw_edgeflow_img(struct image_t *img, struct edge_flow_t edgeflow, int32_t
     point2_prev.y = -(uint16_t)edge_hist_x_prev[i + 1] / 100 + img->h * 2 / 3;
     point2_prev.x = i + 1;
 
-    image_draw_line(img, &point1, &point2);
-    image_draw_line(img, &point1_prev, &point2_prev);
+    image_draw_line(img, &point1, &point2, NULL);
+    image_draw_line(img, &point1_prev, &point2_prev, NULL);
   }
 
   point1_extra.y = (edgeflow.flow_x + edgeflow.div_x * img->w / 2) / 100 + img->h / 2;
   point1_extra.x = 0;
   point2_extra.y = (edgeflow.flow_x + edgeflow.div_x * img->w / 2) / 100 + img->h / 2;
   point2_extra.x = img->w;
-  image_draw_line(img, &point1_extra, &point2_extra);
+  image_draw_line(img, &point1_extra, &point2_extra, NULL);
 }
 
 /**

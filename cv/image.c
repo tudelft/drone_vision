@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef LINUX
 /**
  * Create a new image
  * @param[out] *img The output image
@@ -67,6 +68,7 @@ void image_free(struct image_t *img)
     img->buf = NULL;
   }
 }
+#endif
 
 /**
  * Copy an image from inut to output
@@ -76,13 +78,12 @@ void image_free(struct image_t *img)
  */
 void image_copy(struct image_t *input, struct image_t *output)
 {
-  if (input->type != output->type) {
+  if (input->type != output->type && output->buf_size <= input->buf_size) {
     return;
   }
 
   output->w = input->w;
   output->h = input->h;
-  output->buf_size = input->buf_size;
   output->ts = input->ts;
   memcpy(output->buf, input->buf, input->buf_size);
 }
@@ -156,35 +157,34 @@ uint16_t image_yuv422_colorfilt(struct image_t *input, struct image_t *output, u
   // Copy the creation timestamp (stays the same)
   output->ts = input->ts;
 
-  // Go trough all the pixels
-  for (uint16_t y = 0; y < output->h; y++) {
-    for (uint16_t x = 0; x < output->w; x += 2) {
+  // Go through all the pixels
+  for (uint16_t y = 0; y < input->h; y++) {
+    for (uint16_t x = 0; x < input->w; x += 2) {
       // Check if the color is inside the specified values
-      if (
-        (dest[1] >= y_m)
-        && (dest[1] <= y_M)
-        && (dest[0] >= u_m)
-        && (dest[0] <= u_M)
-        && (dest[2] >= v_m)
-        && (dest[2] <= v_M)
+      if ( (source[0] >= u_m)
+        && (source[0] <= u_M)
+        && (source[2] >= v_m)
+        && (source[2] <= v_M)
       ) {
-        cnt ++;
         // UYVY
-        dest[0] = 64;        // U
-        dest[1] = source[1];  // Y
-        dest[2] = 255;        // V
-        dest[3] = source[3];  // Y
+        if (source[1] >= y_m && source[1] <= y_M){
+          dest[0] = source[0];  // U
+        } else {
+          dest[0] = 127;        // U
+        }
+        if (source[3] >= y_m && source[3] <= y_M){
+          dest[2] = source[2];  // V
+        } else {
+          dest[2] = 127;        // V
+        }
       } else {
         // UYVY
-        char u = source[0] - 127;
-        u /= 4;
         dest[0] = 127;        // U
-        dest[1] = source[1];  // Y
-        u = source[2] - 127;
-        u /= 4;
         dest[2] = 127;        // V
-        dest[3] = source[3];  // Y
       }
+
+      dest[1] = source[1];  // Y1
+      dest[3] = source[3];  // Y2
 
       // Go to the next 2 pixels
       dest += 4;
@@ -235,6 +235,7 @@ void image_yuv422_downsample(struct image_t *input, struct image_t *output, uint
   }
 }
 
+#ifdef LINUX
 /**
  * This function adds padding to input image by mirroring the edge image elements.
  * @param[in]  *input  - input image (grayscale only)
@@ -324,7 +325,6 @@ void pyramid_next_level(struct image_t *input, struct image_t *output, uint8_t b
   }
 }
 
-
 /**
  * This function populates given array of image_t structs with wanted number of padded pyramids based on given input.
  * @param[in]  *input  - input image (grayscale only)
@@ -348,6 +348,7 @@ void pyramid_build(struct image_t *input, struct image_t *output_array, uint8_t 
     image_free(&temp);
   }
 }
+#endif
 
 /**
  * This outputs a subpixel window image in grayscale
@@ -586,7 +587,7 @@ void image_show_flow(struct image_t *img, struct flow_t *vectors, uint16_t point
       (vectors[i].pos.x + vectors[i].flow_x) / subpixel_factor,
       (vectors[i].pos.y + vectors[i].flow_y) / subpixel_factor
     };
-    image_draw_line(img, &from, &to);
+    image_draw_line(img, &from, &to, NULL);
   }
 }
 
@@ -595,12 +596,18 @@ void image_show_flow(struct image_t *img, struct flow_t *vectors, uint16_t point
  * @param[in,out] *img The image to show the line on
  * @param[in] *from The point to draw from
  * @param[in] *to The point to draw to
+ * @param[in] *color Array with size 3 with required color [Y, U, V],
+ *            if NULL, will draw black
  */
-void image_draw_line(struct image_t *img, struct point_t *from, struct point_t *to)
+void image_draw_line(struct image_t *img, struct point_t *from, struct point_t *to, uint8_t *color)
 {
+  static uint8_t black[3] = {0,0,0};
+  if (color == NULL){
+    color = black;
+  }
+  // todo implement color
   int xerr = 0, yerr = 0;
   uint8_t *img_buf = (uint8_t *)img->buf;
-  uint8_t pixel_width = (img->type == IMAGE_YUV422) ? 2 : 1;
   uint16_t startx = from->x;
   uint16_t starty = from->y;
 
@@ -629,17 +636,16 @@ void image_draw_line(struct image_t *img, struct point_t *from, struct point_t *
   else { distance = delta_y * 20; }
 
   /* draw the line */
-  for (uint16_t t = 0; /* starty >= 0 && */ starty < img->h && /* startx >= 0 && */ startx < img->w
-       && t <= distance + 1; t++) {
-    img_buf[img->w * pixel_width * starty + startx * pixel_width] = (t <= 3) ? 0 : 255;
-
+  for (uint16_t t = 0; starty < img->h && startx < img->w && t <= distance + 1; t++) {
     if (img->type == IMAGE_YUV422) {
-      img_buf[img->w * pixel_width * starty + startx * pixel_width + 1] = 255;
-
+      img_buf[img->w * 2 * starty + startx * 2    ] = color[1];
+      img_buf[img->w * 2 * starty + startx * 2 + 1] = color[0];
       if (startx + 1 < img->w) {
-        img_buf[img->w * pixel_width * starty + startx * pixel_width + 2] = (t <= 3) ? 0 : 255;
-        img_buf[img->w * pixel_width * starty + startx * pixel_width + 3] = 255;
+        img_buf[img->w * 2 * starty + startx * 2 + 2] = color[2];
+        img_buf[img->w * 2 * starty + startx * 2 + 3] = color[0];
       }
+    } else if (img->type == IMAGE_GRAYSCALE){
+      img_buf[img->w  * starty + startx] = 255;
     }
 
     xerr += delta_x;
@@ -653,4 +659,28 @@ void image_draw_line(struct image_t *img, struct point_t *from, struct point_t *
       starty += incy;
     }
   }
+}
+
+#include "math.h"
+void image_draw_circle(struct image_t *img, struct point_t *center, uint16_t radius, uint8_t *color)
+{
+  uint8_t *dest = img->buf;
+  float t_step = 0.05; // TODO, should depend on radius
+  int x, y;
+  float t;
+  for (t = 0.0f; t < (float)(2 * M_PI); t += t_step) {
+    x = center->x + (int)(cosf(t) * radius);
+    y = center->y + (int)(sinf(t) * radius);
+    if (x >= 0 && x < img->w - 1 && y >= 0 && y < img->h) {
+      if (img->type == IMAGE_YUV422){
+        dest[y * img->w * 2 + x * 2    ] = color[1];
+        dest[y * img->w * 2 + x * 2 + 1] = color[0];
+        dest[y * img->w * 2 + x * 2 + 2] = color[2];
+        dest[y * img->w * 2 + x * 2 + 3] = color[0];
+      } else if (img->type == IMAGE_GRAYSCALE) {
+        dest[y * img->w + x] = color[0];
+      }
+    }
+  }
+  return;
 }
