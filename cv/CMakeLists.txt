@@ -1,6 +1,6 @@
 # Drone Vision
 
-add_library ( DroneVision image.c streaming/rtp.c streaming/udp_socket.c)
+add_library ( DroneVision image.c streaming/rtp.c streaming/udp_socket.c encoding/jpeg.c)
 # encoding/rtp.c)
 
 set(CMAKE_C_FLAGS "-std=gnu99") 

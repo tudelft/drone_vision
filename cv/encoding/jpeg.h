@@ -22,7 +22,7 @@
 #define _CV_ENCODING_JPEG_H
 
 #include "std.h"
-#include "lib/vision/image.h"
+#include "image.h"
 
 /* The different type of image encodings */
 #define FOUR_ZERO_ZERO          0
