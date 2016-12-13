@@ -1,4 +1,15 @@
-ardrone2_vision
+drone_vision
 ===============
 
-ARDrone2 Onboard Image Processing
+Fast Light Drone Onboard Image Processing
+
+Directories:
+------------
+
+
+ - cv: Computer vision
+ - lib: support libraries
+ - arch: architecture specific includes
+ - standalone: local test and development
+
+

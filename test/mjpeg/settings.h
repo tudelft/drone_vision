@@ -1,0 +1,27 @@
+
+
+// ARDRONE2
+
+/*
+
+#define DOWNSIZE_FACTOR   8
+
+#define VIDEO_DEVICE "/dev/video1"
+#define VIDEO_DEVICE_WIDTH 1280
+#define VIDEO_DEVICE_HEIGHT 720
+
+#define RTP_TARGET_IP  "192.168.0.255"
+
+*/
+
+// WEBCAM
+
+#define DOWNSIZE_FACTOR   2
+
+#define VIDEO_DEVICE "/dev/video0"
+#define VIDEO_DEVICE_WIDTH 640
+#define VIDEO_DEVICE_HEIGHT 480
+
+#define RTP_TARGET_IP  "127.0.0.1"
+
+

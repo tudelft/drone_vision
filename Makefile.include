@@ -1,0 +1,40 @@
+PROCESSOR ?= x86
+
+DIR_DRONE_VISION := $(dir $(lastword $(MAKEFILE_LIST)))
+# ${shell echo ${PWD}}
+
+# Paths
+DIR_DV          ?= $(DIR_DRONE_VISION)
+DIR_LIB         ?= $(DIR_DRONE_VISION)lib
+DIR_MODULES     ?= $(DIR_DRONE_VISION)modules
+
+
+
+CROSS_COMPILE   ?=
+CC              := $(CROSS_COMPILE)gcc
+CFLAGS          := -O2 -ggdb -Wall -Wextra -Wno-unused-parameter -Wmissing-prototypes -ansi
+LDFLAGS         := -Wl,--no-undefined -Wl,--as-needed
+
+# Add pthread
+override CFLAGS += -pthread
+override LIBS   += -pthread -lrt
+
+
+ifeq ($(PROCESSOR),x86)
+	CFLAGS      += -mtune=native -march=native
+else
+	# erase existing values for CPU
+	override CFLAGS += -mcpu=cortex-a8 -mfpu=neon -mfloat-abi=softfp -ftree-vectorize
+endif
+
+override CFLAGS += -std=c99 -D_GNU_SOURCE -DGST_DISABLE_DEPRECATED
+
+# Make sure all is the first target
+all:
+
+# pretty print
+ifndef V
+QUIET_CC    = @echo '   CC         '$@;
+QUIET_LINK  = @echo '   LINK       '$@;
+QUIET_CLEAN = @echo '   CLEAN      '$@;
+endif
