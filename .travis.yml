@@ -1,0 +1,9 @@
+language: c
+compiler:
+  - gcc
+before_script:
+  - mkdir build
+  - cmake -H. -B./build
+script:
+  - make -C ./build
+
