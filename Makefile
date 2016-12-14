@@ -7,7 +7,7 @@ all:
 
 
 clean:
-	make -C clean
+	make -C ./build clean
 
 mrproper:
 	rm -rf ./build
