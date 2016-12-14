@@ -1,5 +1,5 @@
 # Drone Vision
-cmake_minimum_required (VERSION 2.6) 
+cmake_minimum_required (VERSION 3.0) 
 
 project ( DroneVision ) 
 
