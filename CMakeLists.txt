@@ -3,6 +3,8 @@ cmake_minimum_required (VERSION 3.0)
 
 project ( DroneVision ) 
 
+option(BUILD_test "Tests" ON)
+
 if(WIN32)
    if(MSVC)
       add_definitions(-DWIN32_LEAN_AND_MEAN)
@@ -23,4 +25,6 @@ add_subdirectory (cv)
 add_subdirectory (ext)
 
 # Test Code
-add_subdirectory (test)
+if (BUILD_test)
+  add_subdirectory (test)
+endif()
