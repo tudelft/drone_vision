@@ -509,7 +509,6 @@ void image_2d_gradients(struct image_t *input, struct image_t *d)
   int32_t temp1, temp2;
 
   // Go through all pixels except the borders
-  // split computation of x and y to two loops to optimize run time performance
   for (idx = d->w + 1; idx < size - d->w - 1; idx++) {
     temp1 = (int32_t)input_buf[idx + 1] - (int32_t)input_buf[idx - 1];
     temp2 = (int32_t)input_buf[idx + input->w] - (int32_t)input_buf[idx - input->w];
@@ -552,7 +551,6 @@ void image_2d_sobel(struct image_t *input, struct image_t *d)
   int32_t temp1, temp2;
 
   // Go through all pixels except the borders
-  // split computation of x and y to two loops to optimize run time performance
   for (idx = d->w + 1; idx < size - d->w - 1; idx++) {
     temp1 = 2*((int32_t)input_buf[idx + 1] - (int32_t)input_buf[idx - 1])
          + (int32_t)input_buf[idx + 1 - input->w] - (int32_t)input_buf[idx - 1 - input->w]
