@@ -38,12 +38,22 @@ enum image_type {
   IMAGE_GRADIENT    ///< An image gradient (int16 per pixel)
 };
 
+/**
+ * @brief euler angles
+ * @details Units: radians */
+struct FloatEulers {
+  float phi; ///< in radians
+  float theta; ///< in radians
+  float psi; ///< in radians
+};
+
 /* Main image structure */
 struct image_t {
   enum image_type type;   ///< The image type
   uint16_t w;             ///< Image width
   uint16_t h;             ///< Image height
   struct timeval ts;      ///< The timestamp of creation
+  struct FloatEulers *eulerAngles;   ///< Pointer to the Euler Angles
   uint32_t pprz_ts;       ///< The timestamp in us since system startup
 
   uint8_t buf_idx;        ///< Buffer index for V4L2 freeing
