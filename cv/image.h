@@ -53,7 +53,7 @@ struct image_t {
   uint16_t w;             ///< Image width
   uint16_t h;             ///< Image height
   struct timeval ts;      ///< The timestamp of creation
-  struct FloatEulers *eulerAngles;   ///< Pointer to the Euler Angles
+  struct FloatEulers eulers;   ///< Pointer to the Euler Angles
   uint32_t pprz_ts;       ///< The timestamp in us since system startup
 
   uint8_t buf_idx;        ///< Buffer index for V4L2 freeing

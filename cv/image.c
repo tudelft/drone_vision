@@ -209,7 +209,7 @@ uint16_t image_yuv422_colorfilt(struct image_t *input, struct image_t *output, u
 *  downsample=4   u1y1v1 (skip6) y5 (skip6) ...
 * @param[in] *input The input YUV422 image
 * @param[out] *output The downscaled YUV422 image
-* @param[in] downsample The downsampel facter (must be downsample=2^X)
+* @param[in] downsample The downsample factor (must be downsample=2^X)
 */
 void image_yuv422_downsample(struct image_t *input, struct image_t *output, uint16_t downsample)
 {
