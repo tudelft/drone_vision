@@ -85,7 +85,10 @@ void image_copy(struct image_t *input, struct image_t *output)
 
   output->w = input->w;
   output->h = input->h;
+  output->buf_size = input->buf_size;
   output->ts = input->ts;
+  output->eulers = input->eulers;
+  output->pprz_ts = input->pprz_ts;
   memcpy(output->buf, input->buf, input->buf_size);
 }
 
@@ -797,28 +800,4 @@ void image_draw_line(struct image_t *img, struct point_t *from, struct point_t *
       starty += incy;
     }
   }
-}
-
-#include "math.h"
-void image_draw_circle(struct image_t *img, struct point_t *center, uint16_t radius, uint8_t *color)
-{
-  uint8_t *dest = img->buf;
-  float t_step = 0.05; // TODO, should depend on radius
-  int x, y;
-  float t;
-  for (t = 0.0f; t < (float)(2 * M_PI); t += t_step) {
-    x = center->x + (int)(cosf(t) * radius);
-    y = center->y + (int)(sinf(t) * radius);
-    if (x >= 0 && x < img->w - 1 && y >= 0 && y < img->h) {
-      if (img->type == IMAGE_YUV422){
-        dest[y * img->w * 2 + x * 2    ] = color[1];
-        dest[y * img->w * 2 + x * 2 + 1] = color[0];
-        dest[y * img->w * 2 + x * 2 + 2] = color[2];
-        dest[y * img->w * 2 + x * 2 + 3] = color[0];
-      } else if (img->type == IMAGE_GRAYSCALE) {
-        dest[y * img->w + x] = color[0];
-      }
-    }
-  }
-  return;
 }

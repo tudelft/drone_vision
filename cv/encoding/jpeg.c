@@ -416,7 +416,7 @@ void jpeg_encode_image(struct image_t *in, struct image_t *out, uint32_t quality
     image_format = FOUR_TWO_TWO;
   }
   else if (in->type == IMAGE_GRAYSCALE) {
-      image_format = FOUR_ZERO_ZERO;
+    image_format = FOUR_ZERO_ZERO;
   }
 
   JPEG_ENCODER_STRUCTURE JpegStruct;
