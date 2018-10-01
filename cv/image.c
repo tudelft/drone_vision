@@ -25,9 +25,11 @@
  */
 
 #include "image.h"
+#include "math/geometry.h"
 #include <stdlib.h>
 #include <string.h>
 #include "math.h"
+#include "stereo_math.h"
 
 #ifdef LINUX
 /**
@@ -193,6 +195,61 @@ uint16_t image_yuv422_colorfilt(struct image_t *input, struct image_t *output, u
     }
   }
   return cnt;
+}
+struct point_t yuv_colorfilt_centroid(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M, uint8_t u_m,
+                                uint8_t u_M, uint8_t v_m, uint8_t v_M)
+{
+  uint16_t x_sum =0;
+  uint16_t y_sum =0;
+  uint16_t correct_hits = 0;
+  uint8_t *source = input->buf;
+  uint8_t *dest = output->buf;
+  struct point_t final_cent;
+
+  // Copy the creation timestamp (stays the same)
+  output->ts = input->ts;
+
+  // Go through all the pixels
+  for (uint16_t y = 0; y < ((int)(0.3*input->h)); y++) {
+    for (uint16_t x = 0; x < input->w; x += 2) {
+      // Check if the color is inside the specified values
+      if ( (source[0] >= u_m)
+        && (source[0] <= u_M)
+        && (source[2] >= v_m)
+        && (source[2] <= v_M)
+      ) {
+    	// add values to later compute centroid
+    	x_sum += x;
+    	y_sum += y;
+    	correct_hits++;
+        // UYVY
+        if (source[1] >= y_m && source[1] <= y_M){
+          dest[0] = source[0];  // U
+        } else {
+          dest[0] = 127;        // U
+        }
+        if (source[3] >= y_m && source[3] <= y_M){
+          dest[2] = source[2];  // V
+        } else {
+          dest[2] = 127;        // V
+        }
+      } else {
+        // UYVY
+        dest[0] = 127;        // U
+        dest[2] = 127;        // V
+      }
+
+      dest[1] = source[1];  // Y1
+      dest[3] = source[3];  // Y2
+
+      // Go to the next 2 pixels
+      dest += 4;
+      source += 4;
+    }
+  }
+  final_cent.x = (int)(x_sum/correct_hits);
+  final_cent.y = (int)(y_sum/correct_hits);
+  return final_cent;
 }
 
 /**
@@ -450,6 +507,61 @@ void image_gradients(struct image_t *input, struct image_t *dx, struct image_t *
     dy_buf[idx] = (int16_t)input_buf[idx + input->w] - (int16_t)input_buf[idx - input->w];
   }
 }
+void image_dx_gradient(struct image_t *input, struct image_t *dx)
+{
+  if (dx->buf_size < input->buf_size ){
+    return;
+  }
+
+  // Fetch the buffers in the correct format
+  uint8_t *input_buf = (uint8_t *)input->buf;
+  uint8_t *dx_buf = (int8_t *)dx->buf;
+
+  uint32_t idx;
+  //uint32_t size = input->w * input->h;
+  uint32_t size = input->buf_size ;
+
+  // Go through all pixels except the borders
+  // split computation of x and y to two loops to optimize run time performance
+  for (idx =3 ; idx < size - 2; idx+=2) {
+    dx_buf[idx] = (int16_t)input_buf[idx + 2] - (int16_t)input_buf[idx - 2];
+  }
+
+ //  overwrite incorrect pixels
+//  for (idx = dx->w-1; idx < size; idx+=dx->w) {
+//    dx_buf[idx] = 0;
+//    dx_buf[idx + 1] = 0;
+//  }
+
+}
+
+//void image_gradients_dx(struct image_t *input, struct image_t *dx)
+//{
+//  if (dx->buf_size < input->buf_size){
+//    return;
+//  }
+//
+//  // Fetch the buffers in the correct format
+//  uint8_t *input_buf = (uint8_t *)input->buf;
+//  uint8_t *dx_buf = (int8_t *)dx->buf;
+//
+//  uint32_t idx;
+//  uint32_t size = input->w * input->h;
+//
+//  // Go through all pixels except the borders
+//  // split computation of x and y to two loops to optimize run time performance
+//  for (idx = 1; idx < size - 1; idx++) {
+//    dx_buf[idx] = (int16_t)input_buf[idx + 1] - (int16_t)input_buf[idx - 1];
+//  }
+//
+//  // overwrite incorrect pixels
+//  for (idx = dx->w-1; idx < size; idx+=dx->w) {
+//    dx_buf[idx] = 0;
+//    dx_buf[idx + 1] = 0;
+//  }
+//
+//}
+
 
 /* Integer implementation of square root using Netwon's method
  * Can only compute squares of numbers below 65536, ie result is always uint8_t
@@ -547,31 +659,31 @@ void image_2d_sobel(struct image_t *input, struct image_t *d)
   uint8_t *d_buf = (uint8_t *)d->buf;
 
   uint32_t idx, idx1;
-  uint32_t size = input->w * input->h;
+  uint32_t size = input->w * input->h*2;
   int32_t temp1, temp2;
 
   // Go through all pixels except the borders
-  for (idx = d->w + 1; idx < size - d->w - 1; idx++) {
-    temp1 = 2*((int32_t)input_buf[idx + 1] - (int32_t)input_buf[idx - 1])
-         + (int32_t)input_buf[idx + 1 - input->w] - (int32_t)input_buf[idx - 1 - input->w]
-         + (int32_t)input_buf[idx + 1 + input->w] - (int32_t)input_buf[idx - 1 + input->w];
-    temp2 = 2*((int32_t)input_buf[idx + input->w] - (int32_t)input_buf[idx - input->w])
-        + (int32_t)input_buf[idx - 1 + input->w] - (int32_t)input_buf[idx - 1 - input->w]
-        + (int32_t)input_buf[idx + 1 + input->w] - (int32_t)input_buf[idx + 1 - input->w];
+  for (idx = 2*d->w + 3; idx < size - 2*d->w* - 1; idx+=2) {
+    temp1 = 2*((int32_t)input_buf[idx + 2] - (int32_t)input_buf[idx - 2])
+         + (int32_t)input_buf[idx + 2 - 2*input->w] - (int32_t)input_buf[idx - 2 - 2*input->w]
+         + (int32_t)input_buf[idx + 2 + 2*input->w] - (int32_t)input_buf[idx - 2 + 2*input->w];
+    temp2 = 2*((int32_t)input_buf[idx + 2*input->w] - (int32_t)input_buf[idx - 2*input->w])
+        + (int32_t)input_buf[idx - 2 + 2*input->w] - (int32_t)input_buf[idx - 2 - 2*input->w]
+        + (int32_t)input_buf[idx + 2 + 2*input->w] - (int32_t)input_buf[idx + 2 - 2*input->w];
     d_buf[idx] = sqrti(temp1*temp1 + temp2*temp2);
   }
 
-  // set x gradient for first and last row
-  for (idx = 1, idx1 = size - d->w + 1; idx1 < size - 1; idx++, idx1++) {
-    d_buf[idx] = (uint8_t)abs((int16_t)input_buf[idx + 1] - (int16_t)input_buf[idx - 1]);
-    d_buf[idx1] = (uint8_t)abs((int16_t)input_buf[idx1 + 1] - (int16_t)input_buf[idx1 - 1]);
-  }
-
-  // set y gradient for first and last col
-  for (idx = d->w, idx1 = 2*d->w-1; idx1 < size - input->w; idx+=input->w, idx1+=input->w) {
-    d_buf[idx] = (uint8_t)abs((int16_t)input_buf[idx + input->w] - (int16_t)input_buf[idx - input->w]);
-    d_buf[idx1] = (uint8_t)abs((int16_t)input_buf[idx1 + input->w] - (int16_t)input_buf[idx1 - input->w]);
-  }
+//  // set x gradient for first and last row
+//  for (idx = 1, idx1 = size - d->w + 1; idx1 < size - 1; idx++, idx1++) {
+//    d_buf[idx] = (uint8_t)abs((int16_t)input_buf[idx + 1] - (int16_t)input_buf[idx - 1]);
+//    d_buf[idx1] = (uint8_t)abs((int16_t)input_buf[idx1 + 1] - (int16_t)input_buf[idx1 - 1]);
+//  }
+//
+//  // set y gradient for first and last col
+//  for (idx = d->w, idx1 = 2*d->w-1; idx1 < size - input->w; idx+=input->w, idx1+=input->w) {
+//    d_buf[idx] = (uint8_t)abs((int16_t)input_buf[idx + input->w] - (int16_t)input_buf[idx - input->w]);
+//    d_buf[idx1] = (uint8_t)abs((int16_t)input_buf[idx1 + input->w] - (int16_t)input_buf[idx1 - input->w]);
+//  }
 }
 
 /**
@@ -803,12 +915,36 @@ void image_draw_line(struct image_t *img, struct point_t *from, struct point_t *
 void image_draw_circle(struct image_t *img, struct point_t *center, uint16_t radius, uint8_t *color)
 {
   uint8_t *dest = img->buf;
-  float t_step = 0.05; // TODO, should depend on radius
+  float t_step = 0.005; // TODO, should depend on radius
   int x, y;
   float t;
   for (t = 0.0f; t < (float)(2 * M_PI); t += t_step) {
-    x = center->x + (int)(cosf(t) * radius);
-    y = center->y + (int)(sinf(t) * radius);
+    x = center->x + (int)roundf(cosf(t) * radius);
+    y = center->y + (int)roundf(sinf(t) * radius);
+    if (x >= 0 && x < img->w - 1 && y >= 0 && y < img->h) {
+      if (img->type == IMAGE_YUV422){
+        dest[y * img->w * 2 + x * 2    ] = color[1];
+        dest[y * img->w * 2 + x * 2 + 1] = color[0];
+        dest[y * img->w * 2 + x * 2 + 2] = color[2];
+        dest[y * img->w * 2 + x * 2 + 3] = color[0];
+      } else if (img->type == IMAGE_GRAYSCALE) {
+        dest[y * img->w + x] = color[0];
+      }
+    }
+  }
+  return;
+}
+
+
+void image_draw_ellipse(struct image_t *img, struct point_t *center, uint16_t radius, uint8_t *color, int16_t x_axis, int16_t y_axis)
+{
+  uint8_t *dest = img->buf;
+  float t_step = 0.04; // TODO, should depend on radius
+  int x, y;
+  float t;
+  for (t = 0.0f; t < M_PI_2_1; t += t_step) {
+    x = center->x + (int)roundf(f_sin_tay_3(t+M_PI_2) * x_axis);
+    y = center->y + (int)roundf(f_sin_tay_3(t) * y_axis);
     if (x >= 0 && x < img->w - 1 && y >= 0 && y < img->h) {
       if (img->type == IMAGE_YUV422){
         dest[y * img->w * 2 + x * 2    ] = color[1];
