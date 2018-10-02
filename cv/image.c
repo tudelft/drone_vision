@@ -658,7 +658,7 @@ void image_2d_sobel(struct image_t *input, struct image_t *d)
   uint8_t *input_buf = (uint8_t *)input->buf;
   uint8_t *d_buf = (uint8_t *)d->buf;
 
-  uint32_t idx, idx1;
+  uint32_t idx;
   uint32_t size = input->w * input->h*2;
   int32_t temp1, temp2;
 
