@@ -663,7 +663,7 @@ void image_2d_sobel(struct image_t *input, struct image_t *d)
   int32_t temp1, temp2;
 
   // Go through all pixels except the borders
-  for (idx = 2*d->w + 3; idx < size - 2*d->w* - 1; idx+=2) {
+  for (idx = (d->w)*2 + 3; idx < (size - 2*d->w* - 1); idx+=2) {
     temp1 = 2*((int32_t)input_buf[idx + 2] - (int32_t)input_buf[idx - 2])
          + (int32_t)input_buf[idx + 2 - 2*input->w] - (int32_t)input_buf[idx - 2 - 2*input->w]
          + (int32_t)input_buf[idx + 2 + 2*input->w] - (int32_t)input_buf[idx - 2 + 2*input->w];
@@ -693,6 +693,45 @@ void image_2d_sobel(struct image_t *input, struct image_t *d)
  * @param[in] *dy The gradient in the Y direction
  * @param[out] *g The G[4] vector devided by 255 to keep in range
  */
+
+//This function reads an image and uses its Y-values to compute
+void image_line_follow(struct image_t *input, uint16_t DOP )
+{
+	uint16_t lines_array[DOP][3];
+	uint16_t height = input->h;
+	uint8_t *img_buf = (uint8_t *)input->buf;
+
+	for (uint16_t x=0; x<DOP;x++){
+		lines_array[x][0] = (int)(height*(x+0.5)/DOP);
+		lines_array[x][1] = 0;
+		lines_array[x][2] = 0;
+		uint16_t x_start = input->w*lines_array[x][0]*2+1;
+		for (uint16_t q = x_start+2; q<(x_start+input->w*2-2); q+=2)
+		{
+			uint16_t top_left = q-2-2*input->w;
+			uint16_t top_top = q-2*input->w;
+			uint16_t top_right = q+2 -2*input->w;
+			uint16_t mid_right = q+2;
+			uint16_t bottom_right = q+2+2*input->w;
+			uint16_t bottom_mid = q+2*input->w;
+			uint16_t bottom_left = q-2+2*input->w;
+			uint16_t mid_left = q-2;
+			uint16_t G_x = 2*(img_buf[mid_left]- img_buf[mid_right]) + img_buf[top_left] - img_buf[top_right] + img_buf[bottom_left] - img_buf[bottom_right];
+			uint16_t G_y = 2*(img_buf[top_top]- img_buf[bottom_mid]) + img_buf[top_left] - img_buf[bottom_left] + img_buf[top_right] - img_buf[bottom_right];
+			img_buf[q] = sqrti(G_x*G_x + G_y*G_y);
+			if (img_buf[q]<200)
+			{
+				img_buf[q] =0;
+			}
+		}
+	}
+
+}
+
+
+
+
+
 void image_calculate_g(struct image_t *dx, struct image_t *dy, int32_t *g)
 {
   int32_t sum_dxx = 0, sum_dxy = 0, sum_dyy = 0;

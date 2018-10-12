@@ -108,6 +108,8 @@ void image_draw_ellipse(struct image_t *img, struct point_t *center, uint16_t ra
 uint8_t sqrti(int32_t num);
 void image_2d_gradients(struct image_t *input, struct image_t *d);
 void image_2d_sobel(struct image_t *input, struct image_t *d);
+void image_line_follow(struct image_t *input, uint16_t DOP );
+
 
 #ifdef LINUX
 void image_add_border(struct image_t *input, struct image_t *output, uint8_t border_size);
