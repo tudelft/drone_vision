@@ -197,7 +197,7 @@ uint16_t image_yuv422_colorfilt(struct image_t *input, struct image_t *output, u
   return cnt;
 }
 struct point_t yuv_colorfilt_centroid(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M, uint8_t u_m,
-                                uint8_t u_M, uint8_t v_m, uint8_t v_M)
+                                uint8_t u_M, uint8_t v_m, uint8_t v_M, uint8_t DOP, uint8_t line_mode)
 {
   uint16_t x_sum =0;
   uint16_t y_sum =0;
@@ -210,33 +210,32 @@ struct point_t yuv_colorfilt_centroid(struct image_t *input, struct image_t *out
   output->ts = input->ts;
 
   // Go through all the pixels
-  for (uint16_t y = 0; y < ((int)(0.3*input->h)); y++) {
+  for (uint8_t y = 0; y < (DOP); y++) {
     for (uint16_t x = 0; x < input->w; x += 2) {
       // Check if the color is inside the specified values
       if ( (source[0] >= u_m)
         && (source[0] <= u_M)
+		&& (source[1] >= y_m)
+		&& (source[1] <= y_M)
         && (source[2] >= v_m)
         && (source[2] <= v_M)
+		&& (source[3] >= y_m)
+		&& (source[3] <= y_M)
       ) {
     	// add values to later compute centroid
+    	//UYVY
     	x_sum += x;
-    	y_sum += y;
+    	if (line_mode==1){
+    		y_sum += (int)(input->h*y/DOP);
+    	}
+    	else{
+    		y_sum += y;
+    	}
     	correct_hits++;
-        // UYVY
-        if (source[1] >= y_m && source[1] <= y_M){
-          dest[0] = source[0];  // U
-        } else {
-          dest[0] = 127;        // U
-        }
-        if (source[3] >= y_m && source[3] <= y_M){
-          dest[2] = source[2];  // V
-        } else {
-          dest[2] = 127;        // V
-        }
       } else {
         // UYVY
-        dest[0] = 127;        // U
-        dest[2] = 127;        // V
+        dest[0] = 128;        // U
+        dest[2] = 128;        // V
       }
 
       dest[1] = source[1];  // Y1
@@ -246,6 +245,11 @@ struct point_t yuv_colorfilt_centroid(struct image_t *input, struct image_t *out
       dest += 4;
       source += 4;
     }
+    if (line_mode==1){
+        dest+= (int)(input->h/DOP)*2*input->w;
+        source += (int)(input->h/DOP)*2*input->w;
+    }
+
   }
   final_cent.x = (int)(x_sum/correct_hits);
   final_cent.y = (int)(y_sum/correct_hits);
