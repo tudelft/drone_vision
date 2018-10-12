@@ -251,8 +251,14 @@ struct point_t yuv_colorfilt_centroid(struct image_t *input, struct image_t *out
     }
 
   }
-  final_cent.x = (int)(x_sum/correct_hits);
-  final_cent.y = (int)(y_sum/correct_hits);
+  if(correct_hits!=0){
+	  final_cent.x = (int)(x_sum/correct_hits);
+	  final_cent.y = (int)(y_sum/correct_hits);
+  }
+  else{
+	  final_cent.x = input->w/2;
+	  final_cent.y = input->h/2;
+  }
   return final_cent;
 }
 
