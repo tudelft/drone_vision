@@ -262,6 +262,107 @@ struct point_t yuv_colorfilt_centroid(struct image_t *input, struct image_t *out
   return final_cent;
 }
 
+struct point_t obstacle_detection(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M, uint8_t u_m,
+                                uint8_t u_M, uint8_t v_m, uint8_t v_M, uint8_t DOP, uint8_t line_mode, uint8_t visuals)
+{
+  struct point_t final_cent;
+  uint16_t x_sum =0;
+  uint16_t y_sum =0;
+  uint16_t correct_hits = 0;
+  uint8_t *source = input->buf;
+  uint8_t *dest = output->buf;
+  uint16_t on_segment =0; //decision variable to indicate the code is currently going over a line segment
+  uint16_t pointer_line_segments =0; //pointer to walk along the array 'found_segments'
+  uint16_t found_segments[128][3]; //these are the line segments found by the system
+
+  //starting from the lower part of the image
+  dest+= (int)(input->h)*2*input->w;
+  source+= (int)(input->h)*2*input->w;
+
+  // Copy the creation timestamp (stays the same)
+  output->ts = input->ts;
+
+  // Go through all the pixels
+  for (uint8_t y = input->h; y > (input->h-DOP); y--) {
+    for (uint16_t x = input->w; x >0; x -= 2) {
+      // Check if the color is inside the specified values
+      if ( (source[0] >= u_m)
+        && (source[0] <= u_M)
+		&& (source[1] >= y_m)
+		&& (source[1] <= y_M)
+        && (source[2] >= v_m)
+        && (source[2] <= v_M)
+		&& (source[3] >= y_m)
+		&& (source[3] <= y_M)
+      ) {
+    	// add values to later compute centroid
+    	//UYVY
+    	x_sum += x;
+        y_sum += y;
+        //if pixel is detected and failure was found before
+        if(on_segment==0)
+        {
+        	//save x position of start and y-position of current line
+        	found_segments[pointer_line_segments][0] = x;
+        	found_segments[pointer_line_segments][2] = y;
+        	on_segment=1;
+
+    	}
+
+    	correct_hits++;
+      } else {
+    	if(on_segment==1){
+    		found_segments[pointer_line_segments][1] = x;
+    		on_segment=0;
+    		pointer_line_segments++;
+
+    	}
+        // UYVY
+        dest[0] = 128;        // U
+        dest[2] = 128;        // V
+      }
+
+      dest[1] = source[1];  // Y1
+      dest[3] = source[3];  // Y2
+
+      // Go to the next 2 pixels
+      dest -= 4;
+      source -= 4;
+    }
+    if (line_mode==1){
+        dest-= (int)(input->h/DOP)*2*input->w;
+        source -= (int)(input->h/DOP)*2*input->w;
+    }
+
+  }
+  if(correct_hits!=0){
+	  final_cent.x = (int)(x_sum/correct_hits);
+	  final_cent.y = (int)(y_sum/correct_hits);
+
+	  //draw segments on image
+	  if (visuals ==1){
+		  struct point_t left,right;
+		  uint8_t segment[3] = {128, 64, 64};
+		  for(uint8_t i=0; i<pointer_line_segments; i++)
+		  {
+			  left.x=found_segments[i][0];
+			  left.y=found_segments[i][2];
+			  right.x=found_segments[i][1];
+			  right.y=found_segments[i][2];
+			  image_draw_line(output,&left,&right,segment );
+		  }
+
+	  }
+  }
+  else{
+	  final_cent.x = input->w/2;
+	  final_cent.y = input->h/2;
+
+
+  }
+  return final_cent;
+}
+
 /**
 * Simplified high-speed low CPU downsample function without averaging
 *  downsample factor must be 1, 2, 4, 8 ... 2^X
