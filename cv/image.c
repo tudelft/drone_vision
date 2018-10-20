@@ -234,8 +234,10 @@ struct point_t yuv_colorfilt_centroid(struct image_t *input, struct image_t *out
     	correct_hits++;
       } else {
         // UYVY
+    	/*
         dest[0] = 128;        // U
         dest[2] = 128;        // V
+        */
       }
 
       dest[1] = source[1];  // Y1
@@ -281,10 +283,10 @@ struct point_t obstacle_detection(struct image_t *input, struct image_t *output,
 
   // Copy the creation timestamp (stays the same)
   output->ts = input->ts;
-
+  //y: (input->h-DOP)
   // Go through all the pixels
   for (uint8_t y = input->h; y > (input->h-DOP); y--) {
-    for (uint16_t x = input->w; x >0; x -= 2) {
+    for (uint16_t x = input->w; x >0; x -= 4) {
       // Check if the color is inside the specified values
       if ( (source[0] >= u_m)
         && (source[0] <= u_M)
@@ -314,20 +316,28 @@ struct point_t obstacle_detection(struct image_t *input, struct image_t *output,
     	if(on_segment==1){
     		found_segments[pointer_line_segments][1] = x;
     		on_segment=0;
+    		/*
+    		if((found_segments[pointer_line_segments][1]-found_segments[pointer_line_segments][0])>2){
+    		pointer_line_segments++;
+    		}
+    		*/
     		pointer_line_segments++;
 
     	}
         // UYVY
+    	/*
         dest[0] = 128;        // U
         dest[2] = 128;        // V
+        */
       }
 
       dest[1] = source[1];  // Y1
       dest[3] = source[3];  // Y2
 
       // Go to the next 2 pixels
-      dest -= 4;
-      source -= 4;
+      //(skipping 2 pixels)
+      dest -= 8;
+      source -= 8;
     }
     if (line_mode==1){
         dest-= (int)(input->h/DOP)*2*input->w;
@@ -336,12 +346,18 @@ struct point_t obstacle_detection(struct image_t *input, struct image_t *output,
 
   }
   if(correct_hits!=0){
+	  //centroid from all hits
 	  final_cent.x = (int)(x_sum/correct_hits);
 	  final_cent.y = (int)(y_sum/correct_hits);
 
-	  //draw segments on image
 	  if (visuals ==1){
-		  struct point_t left,right;
+		  uint8_t segment[3] = {128, 64, 64};
+
+
+     //uncomment this to draw segments on the image, from found_segments array
+	 /*
+	  *
+	      struct point_t left,right;
 		  uint8_t segment[3] = {128, 64, 64};
 		  for(uint8_t i=0; i<pointer_line_segments; i++)
 		  {
@@ -351,12 +367,30 @@ struct point_t obstacle_detection(struct image_t *input, struct image_t *output,
 			  right.y=found_segments[i][2];
 			  image_draw_line(output,&left,&right,segment );
 		  }
+		  */
+	   //draw centroids of objects
+		  //this plots the lowest line of all segments, so for the lowest y values
+		    struct point_t top,bottom;
+			uint8_t same_line=1;
+			uint8_t i = 0;
+			while(same_line)
+			  {
+				  top.x=(int)(found_segments[i][0]+found_segments[i][1])/2;
+				  top.y=found_segments[i][2]-5;
+				  bottom.x=(int)(found_segments[i][0]+found_segments[i][1])/2;
+				  bottom.y=found_segments[i][2];
+				  image_draw_line(output,&top,&bottom,segment );
+				  i++;
+				  if(found_segments[i][2]!= found_segments[0][2]){
+					  same_line=0;
+				  }
+			  }
 
 	  }
   }
   else{
-	  final_cent.x = input->w/2;
-	  final_cent.y = input->h/2;
+	  final_cent.x = 1000;
+	  final_cent.y = 1000;
 
 
   }
