@@ -119,8 +119,8 @@ void image_switch(struct image_t *a, struct image_t *b)
  */
 void image_to_grayscale(struct image_t *input, struct image_t *output)
 {
-  uint8_t *source = input->buf;
-  uint8_t *dest = output->buf;
+  uint8_t *source = (uint8_t *)input->buf;
+  uint8_t *dest   = (uint8_t *)output->buf;
   source++;
 
   // Copy the creation timestamp (stays the same)
@@ -153,9 +153,11 @@ void image_to_grayscale(struct image_t *input, struct image_t *output)
 uint16_t image_yuv422_colorfilt(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M, uint8_t u_m,
                                 uint8_t u_M, uint8_t v_m, uint8_t v_M)
 {
+  if (input->type != IMAGE_YUV422){ return 0; }
+
   uint16_t cnt = 0;
-  uint8_t *source = input->buf;
-  uint8_t *dest = output->buf;
+  uint8_t *source = (uint8_t *)input->buf;
+  uint8_t *dest   = (uint8_t *)output->buf;
 
   // Copy the creation timestamp (stays the same)
   output->ts = input->ts;
@@ -196,205 +198,289 @@ uint16_t image_yuv422_colorfilt(struct image_t *input, struct image_t *output, u
   }
   return cnt;
 }
+
+/* yuv_colorfilt_centroid Run color filter with defined Degree of Precision (DOP) and search mode
+ *
+ * input Input image to run color filter on
+ * output Output image to draw filtered image. If set to NULL, will not draw
+ * DOP: degree of precision is a percentage of image to be searched
+ * line_mode : 0 = lines spread evenly throughout image
+ *             1 = lines all at top of image
+ *             2 = lines all in middle of image
+ *             3 = lines all at bottom of image
+ *  return Centroid of color obstacles found. If none found, returns (-1, -1)
+ */
 struct point_t yuv_colorfilt_centroid(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M, uint8_t u_m,
                                 uint8_t u_M, uint8_t v_m, uint8_t v_M, uint8_t DOP, uint8_t line_mode)
 {
-  uint16_t x_sum =0;
-  uint16_t y_sum =0;
-  uint16_t correct_hits = 0;
-  uint8_t *source = input->buf;
-  uint8_t *dest = output->buf;
-  struct point_t final_cent;
+  struct point_t centroid = {.x = -1, .y = -1};
+  if (input->type != IMAGE_YUV422){
+    return centroid;
+  }
 
-  // Copy the creation timestamp (stays the same)
-  output->ts = input->ts;
+  bool draw_output = true;
+  if (output == NULL) { draw_output = false; }
+
+  if (DOP > 100){ DOP = 100; }
+
+  uint8_t *source_init = (uint8_t *)input->buf;
+  uint8_t *dest_init;
+  if (draw_output) {
+    dest_init = (uint8_t *)output->buf;
+  } else {
+    dest_init = 0;
+  }
+
+  output->ts = input->ts;  // Copy the creation timestamp (stays the same)
+
+  uint16_t num_lines = (input->h * DOP) / 100;
+  float y_inrc = 1.f;
+  uint32_t y_start = 0;
+  switch (line_mode){
+    case 0:
+      y_inrc = (float)input->h / num_lines;
+      y_start = input->h / (num_lines * 2);
+      break;
+    case 1:
+      // set start to fill top of image
+      break;
+    case 2:
+      // set start to center lines in of the image
+      y_start = (input->h - num_lines) / 2;
+      break;
+    case 3:
+      // set start to fill bottom of image
+      y_start = input->h - num_lines;
+      break;
+    default:
+      return centroid;
+  }
+
+  uint8_t *source = source_init;
+  uint8_t *dest   = dest_init;
+
+  uint32_t x_sum = 0, y_sum = 0;
+  uint32_t correct_hits = 0;
 
   // Go through all the pixels
-  for (uint8_t y = 0; y < (DOP); y++) {
+  for (uint16_t y = 0, line_num = y_start; y < num_lines; y++, line_num=(uint16_t)(y_inrc * y) + y_start) {
+    dest   = dest_init + input->w * 2 * line_num;
+    source = source_init + input->w * 2 * line_num;
+
     for (uint16_t x = 0; x < input->w; x += 2) {
       // Check if the color is inside the specified values
-      if ( (source[0] >= u_m)
-        && (source[0] <= u_M)
-		&& (source[1] >= y_m)
-		&& (source[1] <= y_M)
-        && (source[2] >= v_m)
-        && (source[2] <= v_M)
-		&& (source[3] >= y_m)
-		&& (source[3] <= y_M)
-      ) {
-    	// add values to later compute centroid
-    	//UYVY
-    	x_sum += x;
-    	if (line_mode==1){
-    		y_sum += (int)(input->h*y/DOP);
-    	}
-    	else{
-    		y_sum += y;
-    	}
-    	correct_hits++;
-      } else {
-        // UYVY
-    	/*
-        dest[0] = 128;        // U
-        dest[2] = 128;        // V
-        */
+      if ( (source[0] >= u_m) && (source[0] <= u_M) &&
+           (source[2] >= v_m) && (source[2] <= v_M)) {
+        // add values to later compute centroid
+        if( (source[1] >= y_m) && (source[1] <= y_M) ) {
+          x_sum += x;
+          y_sum += line_num;
+          correct_hits++;
+        }
+        if( (source[3] >= y_m) && (source[3] <= y_M) ) {
+          x_sum += x + 1;
+          y_sum += line_num;
+          correct_hits++;
+        }
+
+        if(draw_output){
+          // make pixels green
+          dest[0] = 64;
+          dest[1] = 127;
+          dest[2] = 64;
+          dest[3] = 127;
+        }
+      } else if(draw_output){
+        // make pixels green
+        dest[0] = source[0];
+        dest[1] = source[1];
+        dest[2] = source[2];
+        dest[3] = source[3];
       }
-
-      dest[1] = source[1];  // Y1
-      dest[3] = source[3];  // Y2
-
       // Go to the next 2 pixels
       dest += 4;
       source += 4;
     }
-    if (line_mode==1){
-        dest+= (int)(input->h/DOP)*2*input->w;
-        source += (int)(input->h/DOP)*2*input->w;
-    }
+  }
 
+  if(correct_hits > 0) {
+    centroid.x = x_sum / correct_hits;
+    centroid.y = y_sum / correct_hits;
   }
-  if(correct_hits!=0){
-	  final_cent.x = (int)(x_sum/correct_hits);
-	  final_cent.y = (int)(y_sum/correct_hits);
-  }
-  else{
-	  final_cent.x = input->w/2;
-	  final_cent.y = input->h/2;
-  }
-  return final_cent;
+
+  return centroid;
 }
 
-struct point_t obstacle_detection(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M, uint8_t u_m,
-                                uint8_t u_M, uint8_t v_m, uint8_t v_M, uint8_t DOP, uint8_t line_mode, uint8_t visuals)
+/* color_obstacle_detection Run color filter with defined Degree of Precision (DOP) and search mode
+ *
+ * input Input image to run color filter on
+ * output Output image to draw filtered image. If set to NULL, will not draw
+ * DOP: degree of precision is a percentage of image to be searched
+ * line_mode : 0 = lines spread evenly throughout image
+ *             1 = lines all at top of image
+ *             2 = lines all in middle of image
+ *             3 = lines all at bottom of image
+ * segments array of roi_t with size max_segments, identified segments will be stored here
+ */
+struct point_t color_obstacle_detection(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M, uint8_t u_m,
+                                uint8_t u_M, uint8_t v_m, uint8_t v_M, uint8_t DOP, uint8_t line_mode, struct roi_t segments[], uint16_t max_segments)
 {
-  struct point_t final_cent;
-  uint16_t x_sum =0;
-  uint16_t y_sum =0;
-  uint16_t correct_hits = 0;
-  uint8_t *source = input->buf;
-  uint8_t *dest = output->buf;
-  uint16_t on_segment =0; //decision variable to indicate the code is currently going over a line segment
-  uint16_t pointer_line_segments =0; //pointer to walk along the array 'found_segments'
-  uint16_t found_segments[128][3]; //these are the line segments found by the system
+  struct point_t centroid = {.x = -1, .y = -1};
+  if (input->type != IMAGE_YUV422 || max_segments == 0){
+    return centroid;
+  }
 
-  //starting from the lower part of the image
-  dest+= (int)(input->h)*2*input->w;
-  source+= (int)(input->h)*2*input->w;
+  bool draw_output = true;
+  if (output == NULL) { draw_output = false; }
 
-  // Copy the creation timestamp (stays the same)
-  output->ts = input->ts;
-  //y: (input->h-DOP)
+  if (DOP > 100) { DOP = 100; }
+
+  uint8_t *source_init = (uint8_t *)input->buf;
+  uint8_t *dest_init;
+  if (draw_output) {
+    dest_init = (uint8_t *)output->buf;
+  } else {
+    dest_init = 0;
+  }
+
+  output->ts = input->ts;  // Copy the creation timestamp (stays the same)
+
+  uint16_t num_lines = (input->h * DOP) / 100;
+  float y_inrc = 1.f;
+  uint32_t y_start = 0;
+  switch (line_mode){
+    case 0:
+      y_inrc = (float)input->h / num_lines;
+      y_start = input->h / (num_lines * 2);
+      break;
+    case 1:
+      // set start to fill top of image
+      break;
+    case 2:
+      // set start to center lines in of the image
+      y_start = (input->h - num_lines) / 2;
+      break;
+    case 3:
+      // set start to fill bottom of image
+      y_start = input->h - num_lines;
+      break;
+    default:
+      return centroid;
+  }
+
+  int16_t segment_cnt = 0; // counter to make more robust obstacle detection
+  struct point_t last_point = {.x=0, .y=0};  // last positively identified obstacle location
+  uint16_t num_segments = 0; //pointer to walk along the array 'found_segments'
+
+  uint8_t *source = source_init;
+  uint8_t *dest   = dest_init;
+
+  uint32_t x_sum = 0, y_sum = 0;
+  uint32_t correct_hits = 0;
+
   // Go through all the pixels
-  for (uint8_t y = input->h; y > (input->h-DOP); y--) {
-    for (uint16_t x = input->w; x >0; x -= 4) {
+  for (uint16_t y = 0, line_num = y_start; y < num_lines; y++, line_num=(uint16_t)(y_inrc * y) + y_start) {
+    dest   = dest_init   + input->w * 2 * line_num;
+    source = source_init + input->w * 2 * line_num;
+
+    for (uint16_t x = 0; x < input->w; x += 2) {
+      bool hit = false;
       // Check if the color is inside the specified values
-      if ( (source[0] >= u_m)
-        && (source[0] <= u_M)
-		&& (source[1] >= y_m)
-		&& (source[1] <= y_M)
-        && (source[2] >= v_m)
-        && (source[2] <= v_M)
-		&& (source[3] >= y_m)
-		&& (source[3] <= y_M)
-      ) {
-    	// add values to later compute centroid
-    	//UYVY
-    	x_sum += x;
-        y_sum += y;
-        //if pixel is detected and failure was found before
-        if(on_segment==0)
-        {
-        	//save x position of start and y-position of current line
-        	found_segments[pointer_line_segments][0] = x;
-        	found_segments[pointer_line_segments][2] = y;
-        	on_segment=1;
+      if ( (source[0] >= u_m) && (source[0] <= u_M) &&
+           (source[2] >= v_m) && (source[2] <= v_M)) {
+        // add values to later compute centroid
+        if( (source[1] >= y_m) && (source[1] <= y_M) ) {
+          x_sum += x;
+          y_sum += line_num;
+          last_point.x = x;
+          correct_hits++;
+          hit = true;
+        }
+        if( (source[3] >= y_m) && (source[3] <= y_M) ) {
+          x_sum += x + 1;
+          y_sum += line_num;
+          last_point.x = x + 1;
+          correct_hits++;
+          hit = true;
+        }
 
-    	}
+        if (!hit) { break; }
+        last_point.y = line_num;
 
-    	correct_hits++;
+        if(!segment_cnt) {
+          // start of obstacle segment
+          segments[num_segments].tl = last_point;
+          // this will essentially cause the system continue searching for a little to see if the obstacle continues with a small break
+          segment_cnt = 4;
+        }
+
+        if(draw_output){
+          // make pixels green
+          dest[0] = 64;
+          dest[1] = 127;
+          dest[2] = 64;
+          dest[3] = 127;
+        }
       } else {
-    	if(on_segment==1){
-    		found_segments[pointer_line_segments][1] = x;
-    		on_segment=0;
-    		/*
-    		if((found_segments[pointer_line_segments][1]-found_segments[pointer_line_segments][0])>2){
-    		pointer_line_segments++;
-    		}
-    		*/
-    		pointer_line_segments++;
+        if(segment_cnt == 1){
+          // end of obstacle segment
+          segments[num_segments].br = last_point;
+          num_segments++;
+          segment_cnt = 0;
+        } else if (segment_cnt) { segment_cnt--; }
 
-    	}
-        // UYVY
-    	/*
-        dest[0] = 128;        // U
-        dest[2] = 128;        // V
-        */
+        if(draw_output){
+          // copy image
+          dest[0] = source[0];
+          dest[1] = source[1];
+          dest[2] = source[2];
+          dest[3] = source[3];
+        }
       }
 
-      dest[1] = source[1];  // Y1
-      dest[3] = source[3];  // Y2
-
       // Go to the next 2 pixels
-      //(skipping 2 pixels)
-      dest -= 8;
-      source -= 8;
-    }
-    if (line_mode==1){
-        dest-= (int)(input->h/DOP)*2*input->w;
-        source -= (int)(input->h/DOP)*2*input->w;
+      dest += 4;
+      source += 4;
+      if (num_segments >= max_segments) {
+        break;
+      }
     }
 
+    if(segment_cnt){
+      // segment ended by line end
+      segments[num_segments].br = last_point;
+      num_segments++;
+      segment_cnt = 0;
+    }
+
+    if (num_segments >= max_segments) {
+      break;
+    }
   }
-  if(correct_hits!=0){
-	  //centroid from all hits
-	  final_cent.x = (int)(x_sum/correct_hits);
-	  final_cent.y = (int)(y_sum/correct_hits);
 
-	  if (visuals ==1){
-		  uint8_t segment[3] = {128, 64, 64};
-
-
-     //uncomment this to draw segments on the image, from found_segments array
-	 /*
-	  *
-	      struct point_t left,right;
-		  uint8_t segment[3] = {128, 64, 64};
-		  for(uint8_t i=0; i<pointer_line_segments; i++)
-		  {
-			  left.x=found_segments[i][0];
-			  left.y=found_segments[i][2];
-			  right.x=found_segments[i][1];
-			  right.y=found_segments[i][2];
-			  image_draw_line(output,&left,&right,segment );
-		  }
-		  */
-	   //draw centroids of objects
-		  //this plots the lowest line of all segments, so for the lowest y values
-		    struct point_t top,bottom;
-			uint8_t same_line=1;
-			uint8_t i = 0;
-			while(same_line)
-			  {
-				  top.x=(int)(found_segments[i][0]+found_segments[i][1])/2;
-				  top.y=found_segments[i][2]-5;
-				  bottom.x=(int)(found_segments[i][0]+found_segments[i][1])/2;
-				  bottom.y=found_segments[i][2];
-				  image_draw_line(output,&top,&bottom,segment );
-				  i++;
-				  if(found_segments[i][2]!= found_segments[0][2]){
-					  same_line=0;
-				  }
-			  }
-
-	  }
+  // compute centroid
+  if(correct_hits > 0) {
+    centroid.x = x_sum / correct_hits;
+    centroid.y = y_sum / correct_hits;
   }
-  else{
-	  final_cent.x = 1000;
-	  final_cent.y = 1000;
 
-
+  if(draw_output){
+    uint8_t red[4] = {127, 64, 255};
+    //draw centroids of objects on the lowest line of all segments
+    struct point_t start, end;
+    int16_t segment = num_segments - 1;
+    while(segment >= 0 && segments[segment].tl.y == segments[num_segments-1].tl.y)
+    {
+      start.x = segments[segment].tl.x;
+      start.y = segments[segment].tl.y;
+      end.x = segments[segment].br.x;
+      end.y = segments[segment].br.y;
+      image_draw_line(output, &start, &end, red);
+      segment--;
+    }
   }
-  return final_cent;
+
+  return centroid;
 }
 
 /**
@@ -411,12 +497,12 @@ struct point_t obstacle_detection(struct image_t *input, struct image_t *output,
 *  downsample=4   u1y1v1 (skip6) y5 (skip6) ...
 * @param[in] *input The input YUV422 image
 * @param[out] *output The downscaled YUV422 image
-* @param[in] downsample The downsampel facter (must be downsample=2^X)
+* @param[in] downsample The downsample factor (must be downsample=2^X)
 */
 void image_yuv422_downsample(struct image_t *input, struct image_t *output, uint16_t downsample)
 {
-  uint8_t *source = input->buf;
-  uint8_t *dest = output->buf;
+  uint8_t *source = (uint8_t *)input->buf;
+  uint8_t *dest   = (uint8_t *)output->buf;
   uint16_t pixelskip = (downsample - 1) * 2;
 
   // Copy the creation timestamp (stays the same)
@@ -630,8 +716,8 @@ void image_gradients(struct image_t *input, struct image_t *dx, struct image_t *
 
   // Fetch the buffers in the correct format
   uint8_t *input_buf = (uint8_t *)input->buf;
-  uint8_t *dx_buf = (int8_t *)dx->buf;
-  uint8_t *dy_buf = (int8_t *)dy->buf;
+  uint8_t *dx_buf = (uint8_t *)dx->buf;
+  uint8_t *dy_buf = (uint8_t *)dy->buf;
 
   uint32_t idx;
   uint32_t size = input->w * input->h;
@@ -660,11 +746,11 @@ void image_dx_gradient(struct image_t *input, struct image_t *dx)
 
   // Fetch the buffers in the correct format
   uint8_t *input_buf = (uint8_t *)input->buf;
-  uint8_t *dx_buf = (int8_t *)dx->buf;
+  uint8_t *dx_buf = (uint8_t *)dx->buf;
 
   uint32_t idx;
   //uint32_t size = input->w * input->h;
-  uint32_t size = input->buf_size ;
+  uint32_t size = input->buf_size;
 
   // Go through all pixels except the borders
   // split computation of x and y to two loops to optimize run time performance
@@ -803,32 +889,45 @@ void image_2d_sobel(struct image_t *input, struct image_t *d)
   uint8_t *input_buf = (uint8_t *)input->buf;
   uint8_t *d_buf = (uint8_t *)d->buf;
 
-  uint32_t idx;
-  uint32_t size = input->w * input->h*2;
+  uint32_t idx, idx1;
   int32_t temp1, temp2;
+  int32_t pixel_width, Yoffset;
+
+  if (input->type == IMAGE_GRAYSCALE) {
+    pixel_width = 1;
+    Yoffset = 0;
+  } else if (input->type == IMAGE_YUV422) {
+    pixel_width = 2;
+    Yoffset = 1;
+  } else {
+    return;
+  }
+
+  uint32_t size = pixel_width * input->w * input->h;
+  uint16_t line_width = pixel_width*input->w;
 
   // Go through all pixels except the borders
-  for (idx = (d->w)*2 + 3; idx < (size - 2*d->w* - 1); idx+=2) {
-    temp1 = 2*((int32_t)input_buf[idx + 2] - (int32_t)input_buf[idx - 2])
-         + (int32_t)input_buf[idx + 2 - 2*input->w] - (int32_t)input_buf[idx - 2 - 2*input->w]
-         + (int32_t)input_buf[idx + 2 + 2*input->w] - (int32_t)input_buf[idx - 2 + 2*input->w];
-    temp2 = 2*((int32_t)input_buf[idx + 2*input->w] - (int32_t)input_buf[idx - 2*input->w])
-        + (int32_t)input_buf[idx - 2 + 2*input->w] - (int32_t)input_buf[idx - 2 - 2*input->w]
-        + (int32_t)input_buf[idx + 2 + 2*input->w] - (int32_t)input_buf[idx + 2 - 2*input->w];
+  for (idx = line_width + pixel_width + Yoffset; idx < size - pixel_width*d->w - pixel_width; idx++) {
+    temp1 = 2*((int32_t)input_buf[idx + pixel_width] - (int32_t)input_buf[idx - pixel_width])
+         + (int32_t)input_buf[idx + pixel_width - line_width] - (int32_t)input_buf[idx - pixel_width - line_width]
+         + (int32_t)input_buf[idx + pixel_width + line_width] - (int32_t)input_buf[idx - pixel_width + line_width];
+    temp2 = 2*((int32_t)input_buf[idx + line_width] - (int32_t)input_buf[idx - line_width])
+        + (int32_t)input_buf[idx - pixel_width + line_width] - (int32_t)input_buf[idx - pixel_width - line_width]
+        + (int32_t)input_buf[idx + pixel_width + line_width] - (int32_t)input_buf[idx + pixel_width - line_width];
     d_buf[idx] = sqrti(temp1*temp1 + temp2*temp2);
   }
 
-//  // set x gradient for first and last row
-//  for (idx = 1, idx1 = size - d->w + 1; idx1 < size - 1; idx++, idx1++) {
-//    d_buf[idx] = (uint8_t)abs((int16_t)input_buf[idx + 1] - (int16_t)input_buf[idx - 1]);
-//    d_buf[idx1] = (uint8_t)abs((int16_t)input_buf[idx1 + 1] - (int16_t)input_buf[idx1 - 1]);
-//  }
-//
-//  // set y gradient for first and last col
-//  for (idx = d->w, idx1 = 2*d->w-1; idx1 < size - input->w; idx+=input->w, idx1+=input->w) {
-//    d_buf[idx] = (uint8_t)abs((int16_t)input_buf[idx + input->w] - (int16_t)input_buf[idx - input->w]);
-//    d_buf[idx1] = (uint8_t)abs((int16_t)input_buf[idx1 + input->w] - (int16_t)input_buf[idx1 - input->w]);
-//  }
+  // set x gradient for first and last row
+  for (idx = pixel_width + Yoffset, idx1 = size - line_width + pixel_width + Yoffset; idx1 < size - pixel_width; idx+=pixel_width, idx1+=pixel_width) {
+    d_buf[idx] = (uint8_t)abs((int16_t)input_buf[idx + pixel_width] - (int16_t)input_buf[idx - pixel_width]);
+    d_buf[idx1] = (uint8_t)abs((int16_t)input_buf[idx1 + pixel_width] - (int16_t)input_buf[idx1 - pixel_width]);
+  }
+
+  // set y gradient for first and last col
+  for (idx = line_width + Yoffset, idx1 = 2*line_width-1; idx1 < size - input->w; idx+=line_width, idx1+=line_width) {
+    d_buf[idx] = (uint8_t)abs((int16_t)input_buf[idx + line_width] - (int16_t)input_buf[idx - line_width]);
+    d_buf[idx1] = (uint8_t)abs((int16_t)input_buf[idx1 + line_width] - (int16_t)input_buf[idx1 - line_width]);
+  }
 }
 
 /**
@@ -842,40 +941,34 @@ void image_2d_sobel(struct image_t *input, struct image_t *d)
 //This function reads an image and uses its Y-values to compute
 void image_line_follow(struct image_t *input, uint16_t DOP )
 {
-	uint16_t lines_array[DOP][3];
-	uint16_t height = input->h;
-	uint8_t *img_buf = (uint8_t *)input->buf;
+  uint16_t lines_array[DOP][3];
+  uint8_t *img_buf = (uint8_t *)input->buf;
 
-	for (uint16_t x=0; x<DOP;x++){
-		lines_array[x][0] = (int)(height*(x+0.5)/DOP);
-		lines_array[x][1] = 0;
-		lines_array[x][2] = 0;
-		uint16_t x_start = input->w*lines_array[x][0]*2+1;
-		for (uint16_t q = x_start+2; q<(x_start+input->w*2-2); q+=2)
-		{
-			uint16_t top_left = q-2-2*input->w;
-			uint16_t top_top = q-2*input->w;
-			uint16_t top_right = q+2 -2*input->w;
-			uint16_t mid_right = q+2;
-			uint16_t bottom_right = q+2+2*input->w;
-			uint16_t bottom_mid = q+2*input->w;
-			uint16_t bottom_left = q-2+2*input->w;
-			uint16_t mid_left = q-2;
-			uint16_t G_x = 2*(img_buf[mid_left]- img_buf[mid_right]) + img_buf[top_left] - img_buf[top_right] + img_buf[bottom_left] - img_buf[bottom_right];
-			uint16_t G_y = 2*(img_buf[top_top]- img_buf[bottom_mid]) + img_buf[top_left] - img_buf[bottom_left] + img_buf[top_right] - img_buf[bottom_right];
-			img_buf[q] = sqrti(G_x*G_x + G_y*G_y);
-			if (img_buf[q]<200)
-			{
-				img_buf[q] =0;
-			}
-		}
-	}
-
+  for (uint16_t x = 0; x < DOP; x++){
+    lines_array[x][0] = (int)(input->h*(x+0.5) / DOP);
+    lines_array[x][1] = 0;
+    lines_array[x][2] = 0;
+    uint16_t x_start = input->w*lines_array[x][0]*2+1;
+    for (uint16_t q = x_start+2; q<(x_start+input->w*2-2); q+=2)
+    {
+      uint16_t top_left = q-2-2*input->w;
+      uint16_t top_top = q-2*input->w;
+      uint16_t top_right = q+2 -2*input->w;
+      uint16_t mid_right = q+2;
+      uint16_t bottom_right = q+2+2*input->w;
+      uint16_t bottom_mid = q+2*input->w;
+      uint16_t bottom_left = q-2+2*input->w;
+      uint16_t mid_left = q-2;
+      uint16_t G_x = 2*(img_buf[mid_left]- img_buf[mid_right]) + img_buf[top_left] - img_buf[top_right] + img_buf[bottom_left] - img_buf[bottom_right];
+      uint16_t G_y = 2*(img_buf[top_top]- img_buf[bottom_mid]) + img_buf[top_left] - img_buf[bottom_left] + img_buf[top_right] - img_buf[bottom_right];
+      img_buf[q] = sqrti(G_x*G_x + G_y*G_y);
+      if (img_buf[q] < 200)
+      {
+        img_buf[q] =0;
+      }
+    }
+  }
 }
-
-
-
-
 
 void image_calculate_g(struct image_t *dx, struct image_t *dy, int32_t *g)
 {
@@ -1039,7 +1132,7 @@ void image_draw_line(struct image_t *img, struct point_t *from, struct point_t *
   if (color == NULL){
     color = black;
   }
-  // todo implement color
+
   int xerr = 0, yerr = 0;
   uint8_t *img_buf = (uint8_t *)img->buf;
   uint16_t startx = from->x;
@@ -1070,13 +1163,18 @@ void image_draw_line(struct image_t *img, struct point_t *from, struct point_t *
   else { distance = delta_y * 20; }
 
   /* draw the line */
-  for (uint16_t t = 0; starty < img->h && startx < img->w && t <= distance + 1; t++) {
+  for (uint16_t t = 0; starty < img->h && startx < img->w - 1 && t <= distance + 1; t++) {
     if (img->type == IMAGE_YUV422) {
-      img_buf[img->w * 2 * starty + startx * 2    ] = color[1];
-      img_buf[img->w * 2 * starty + startx * 2 + 1] = color[0];
-      if (startx + 1 < img->w) {
+      if(startx % 2 == 0){
+        img_buf[img->w * 2 * starty + startx * 2    ] = color[1];
+        img_buf[img->w * 2 * starty + startx * 2 + 1] = color[0];
         img_buf[img->w * 2 * starty + startx * 2 + 2] = color[2];
         img_buf[img->w * 2 * starty + startx * 2 + 3] = color[0];
+      } else {
+        img_buf[img->w * 2 * starty + startx * 2 + 1] = color[0];
+        img_buf[img->w * 2 * starty + startx * 2    ] = color[2];
+        img_buf[img->w * 2 * starty + startx * 2 - 1] = color[0];
+        img_buf[img->w * 2 * starty + startx * 2 - 2] = color[1];
       }
     } else if (img->type == IMAGE_GRAYSCALE){
       img_buf[img->w  * starty + startx] = 255;
@@ -1098,7 +1196,7 @@ void image_draw_line(struct image_t *img, struct point_t *from, struct point_t *
 #include "math.h"
 void image_draw_circle(struct image_t *img, struct point_t *center, uint16_t radius, uint8_t *color)
 {
-  uint8_t *dest = img->buf;
+  uint8_t *dest = (uint8_t *)img->buf;
   float t_step = 0.005; // TODO, should depend on radius
   int x, y;
   float t;
@@ -1120,9 +1218,9 @@ void image_draw_circle(struct image_t *img, struct point_t *center, uint16_t rad
 }
 
 
-void image_draw_ellipse(struct image_t *img, struct point_t *center, uint16_t radius, uint8_t *color, int16_t x_axis, int16_t y_axis)
+void image_draw_ellipse(struct image_t *img, struct point_t *center, uint8_t *color, int16_t x_axis, int16_t y_axis)
 {
-  uint8_t *dest = img->buf;
+  uint8_t *dest = (uint8_t *)img->buf;
   float t_step = 0.04; // TODO, should depend on radius
   int x, y;
   float t;

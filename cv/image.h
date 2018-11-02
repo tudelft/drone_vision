@@ -57,6 +57,11 @@ struct point_t {
   int32_t y;             ///< The y coordinate of the point
 };
 
+struct roi_t {
+  struct point_t tl;  // top left
+  struct point_t br;  // bottom right
+};
+
 /* Vector structure for point differences */
 struct flow_t {
   struct point_t pos;         ///< The original position the flow comes from
@@ -90,9 +95,9 @@ void image_to_grayscale(struct image_t *input, struct image_t *output);
 uint16_t image_yuv422_colorfilt(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M, uint8_t u_m,
                                 uint8_t u_M, uint8_t v_m, uint8_t v_M);
 struct point_t yuv_colorfilt_centroid(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M, uint8_t u_m,
-								uint8_t u_M, uint8_t v_m, uint8_t v_M, uint8_t DOP, uint8_t line_mode );
-struct point_t obstacle_detection(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M, uint8_t u_m,
-								uint8_t u_M, uint8_t v_m, uint8_t v_M, uint8_t DOP, uint8_t line_mode, uint8_t visuals);
+        uint8_t u_M, uint8_t v_m, uint8_t v_M, uint8_t DOP, uint8_t line_mode);
+struct point_t color_obstacle_detection(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M, uint8_t u_m,
+        uint8_t u_M, uint8_t v_m, uint8_t v_M, uint8_t DOP, uint8_t line_mode, struct roi_t segments[], uint16_t max_segments);
 void image_yuv422_downsample(struct image_t *input, struct image_t *output, uint16_t downsample);
 void image_subpixel_window(struct image_t *input, struct image_t *output, struct point_t *center,
                            uint32_t subpixel_factor, uint8_t border_size);
@@ -105,7 +110,7 @@ void image_show_points(struct image_t *img, struct point_t *points, uint16_t poi
 void image_show_flow(struct image_t *img, struct flow_t *vectors, uint16_t points_cnt, uint8_t subpixel_factor);
 void image_draw_line(struct image_t *img, struct point_t *from, struct point_t *to, uint8_t *color);
 void image_draw_circle(struct image_t *img, struct point_t *center, uint16_t radius, uint8_t *color);
-void image_draw_ellipse(struct image_t *img, struct point_t *center, uint16_t radius, uint8_t *color, int16_t x_axis, int16_t y_axis);
+void image_draw_ellipse(struct image_t *img, struct point_t *center, uint8_t *color, int16_t x_axis, int16_t y_axis);
 
 uint8_t sqrti(int32_t num);
 void image_2d_gradients(struct image_t *input, struct image_t *d);
