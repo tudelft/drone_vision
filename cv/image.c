@@ -322,12 +322,12 @@ struct point_t yuv_colorfilt_centroid(struct image_t *input, struct image_t *out
  *             3 = lines all at bottom of image
  * segments array of roi_t with size max_segments, identified segments will be stored here
  */
-struct point_t color_obstacle_detection(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M, uint8_t u_m,
-                                uint8_t u_M, uint8_t v_m, uint8_t v_M, uint8_t DOP, uint8_t line_mode, struct roi_t segments[], uint16_t max_segments)
+uint16_t color_obstacle_detection(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M,
+                                uint8_t u_m, uint8_t u_M, uint8_t v_m, uint8_t v_M,
+                                uint8_t DOP, uint8_t line_mode, struct roi_t segments[], uint16_t max_segments)
 {
-  struct point_t centroid = {.x = -1, .y = -1};
   if (input->type != IMAGE_YUV422 || max_segments == 0){
-    return centroid;
+    return 0;
   }
 
   bool draw_output = true;
@@ -375,9 +375,6 @@ struct point_t color_obstacle_detection(struct image_t *input, struct image_t *o
   uint8_t *source = source_init;
   uint8_t *dest   = dest_init;
 
-  uint32_t x_sum = 0, y_sum = 0;
-  uint32_t correct_hits = 0;
-
   // Go through all the pixels
   for (uint16_t y = 0, line_num = y_start; y < num_lines; y++, line_num=(uint16_t)(y_inrc * y) + y_start) {
     dest   = dest_init   + input->w * 2 * line_num;
@@ -390,17 +387,11 @@ struct point_t color_obstacle_detection(struct image_t *input, struct image_t *o
            (source[2] >= v_m) && (source[2] <= v_M)) {
         // add values to later compute centroid
         if( (source[1] >= y_m) && (source[1] <= y_M) ) {
-          x_sum += x;
-          y_sum += line_num;
           last_point.x = x;
-          correct_hits++;
           hit = true;
         }
         if( (source[3] >= y_m) && (source[3] <= y_M) ) {
-          x_sum += x + 1;
-          y_sum += line_num;
           last_point.x = x + 1;
-          correct_hits++;
           hit = true;
         }
 
@@ -458,10 +449,173 @@ struct point_t color_obstacle_detection(struct image_t *input, struct image_t *o
     }
   }
 
-  // compute centroid
-  if(correct_hits > 0) {
-    centroid.x = x_sum / correct_hits;
-    centroid.y = y_sum / correct_hits;
+  if(draw_output){
+    uint8_t red[4] = {127, 64, 255};
+    //draw centroids of objects on the lowest line of all segments
+    struct point_t start, end;
+    int16_t segment = num_segments - 1;
+    while(segment >= 0 && segments[segment].tl.y == segments[num_segments-1].tl.y)
+    {
+      start.x = segments[segment].tl.x;
+      start.y = segments[segment].tl.y;
+      end.x = segments[segment].br.x;
+      end.y = segments[segment].br.y;
+      image_draw_line(output, &start, &end, red);
+      segment--;
+    }
+  }
+
+  return num_segments;
+}
+
+/* color_obstacle_detection Run color filter with defined Degree of Precision (DOP) and search mode
+ *
+ * input Input image to run color filter on
+ * output Output image to draw filtered image. If set to NULL, will not draw
+ * DOP: degree of precision is a percentage of image to be searched
+ * line_mode : 0 = lines spread evenly throughout image
+ *             1 = lines all at top of image
+ *             2 = lines all in middle of image
+ *             3 = lines all at bottom of image
+ * segments array of roi_t with size max_segments, identified segments will be stored here
+ *
+ * keep_out_min Half width of keep out at top of image [pixels]
+ * keep_out_max Half width of keep out at bottom of image [pixels]
+ */
+struct roi_t color_obstacle_detection_with_keepout(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M,
+                                uint8_t u_m, uint8_t u_M, uint8_t v_m, uint8_t v_M,
+                                uint8_t DOP, uint8_t line_mode, struct roi_t segments[], uint16_t max_segments,
+                                uint16_t keep_out_min, uint16_t keep_out_max)
+{
+  struct roi_t obstacle = {.tl={-1,-1}, .br={-1,-1}};
+
+  if (input->type != IMAGE_YUV422 || max_segments == 0){
+    return 0;
+  }
+
+  bool draw_output = true;
+  if (output == NULL) { draw_output = false; }
+
+  if (DOP > 100) { DOP = 100; }
+
+  uint8_t *source_init = (uint8_t *)input->buf;
+  uint8_t *dest_init;
+  if (draw_output) {
+    dest_init = (uint8_t *)output->buf;
+  } else {
+    dest_init = 0;
+  }
+
+  output->ts = input->ts;  // Copy the creation timestamp (stays the same)
+
+  uint16_t num_lines = (input->h * DOP) / 100;
+  float y_inrc = 1.f;
+  uint32_t y_start = 0;
+  switch (line_mode){
+    case 0:
+      y_inrc = (float)input->h / num_lines;
+      y_start = input->h / (num_lines * 2);
+      break;
+    case 1:
+      // set start to fill top of image
+      break;
+    case 2:
+      // set start to center lines in of the image
+      y_start = (input->h - num_lines) / 2;
+      break;
+    case 3:
+      // set start to fill bottom of image
+      y_start = input->h - num_lines;
+      break;
+    default:
+      return centroid;
+  }
+
+  int16_t segment_cnt = 0; // counter to make more robust obstacle detection
+  struct point_t last_point = {.x=0, .y=0};  // last positively identified obstacle location
+  uint16_t num_segments = 0; //pointer to walk along the array 'found_segments'
+
+  uint8_t *source = source_init;
+  uint8_t *dest   = dest_init;
+
+  float keepout_grad = (keep_out_max - keep_out_min) / input->h;
+  uint16_t keepout_l,keepout_r;
+
+  // Go through all the pixels
+  for (uint16_t y = num_lines - 1, line_num = y_start; y >= 0; y--, line_num=(uint16_t)(y_inrc * y) + y_start) {
+    dest   = dest_init   + input->w * 2 * line_num;
+    source = source_init + input->w * 2 * line_num;
+
+    keepout_l = input->w - keepout_grad * segments[i].tl.y + keep_out_min;
+    keepout_r = input->w + keepout_grad * segments[i].tl.y + keep_out_min;
+
+    for (uint16_t x = 0; x < input->w; x += 2) {
+      bool hit = false;
+      // Check if the color is inside the specified values
+      if ( (source[0] >= u_m) && (source[0] <= u_M) &&
+           (source[2] >= v_m) && (source[2] <= v_M)) {
+        // add values to later compute centroid
+        if( (source[1] >= y_m) && (source[1] <= y_M) ) {
+          last_point.x = x;
+          hit = true;
+        }
+        if( (source[3] >= y_m) && (source[3] <= y_M) ) {
+          last_point.x = x + 1;
+          hit = true;
+        }
+
+        if (!hit) { break; }
+        last_point.y = line_num;
+
+        if(!segment_cnt) {
+          // start of obstacle segment
+          segments[num_segments].tl = last_point;
+          // this will essentially cause the system continue searching for a little to see if the obstacle continues with a small break
+          segment_cnt = 4;
+        }
+
+        if(draw_output){
+          // make pixels green
+          dest[0] = 64;
+          dest[1] = 127;
+          dest[2] = 64;
+          dest[3] = 127;
+        }
+      } else {
+        if(segment_cnt == 1){
+          // end of obstacle segment
+          segments[num_segments].br = last_point;
+          num_segments++;
+          segment_cnt = 0;
+        } else if (segment_cnt) { segment_cnt--; }
+
+        if(draw_output){
+          // copy image
+          dest[0] = source[0];
+          dest[1] = source[1];
+          dest[2] = source[2];
+          dest[3] = source[3];
+        }
+      }
+
+      // Go to the next 2 pixels
+      dest += 4;
+      source += 4;
+      if (num_segments >= max_segments) {
+        break;
+      }
+    }
+
+    if(segment_cnt){
+      // segment ended by line end
+      segments[num_segments].br = last_point;
+      num_segments++;
+      segment_cnt = 0;
+    }
+
+    if (num_segments >= max_segments) {
+      break;
+    }
   }
 
   if(draw_output){
@@ -480,7 +634,29 @@ struct point_t color_obstacle_detection(struct image_t *input, struct image_t *o
     }
   }
 
-  return centroid;
+    int32_t i = num_segments;
+  while (--i > 0){
+    if (obstacle.tl.x > 0 && segments[i].tl.y != obstacle.tl.y){
+      // no more obstacles on this line
+      break;
+    }
+
+    if ((segments[i].tl.x > keepout_l && segments[i].tl.x < keepout_r) ||
+        (segments[i].br.x > keepout_l && segments[i].br.x < keepout_r) ||
+        (segments[i].tl.x < keepout_l && segments[i].br.x > keepout_r) )
+    {
+      // (part of) segment is keepout zone, store limit
+      if (obstacle.tl.x < 0){
+        // first obstacle
+        obstacle = segments[i];
+      } else {
+        // multiple obstacles on same line, merge two segments together
+        obstacle.tl = segments[i].tl;
+      }
+    }
+  }
+
+  return obstacle;
 }
 
 /**
@@ -964,7 +1140,7 @@ void image_line_follow(struct image_t *input, uint16_t DOP )
       img_buf[q] = sqrti(G_x*G_x + G_y*G_y);
       if (img_buf[q] < 200)
       {
-        img_buf[q] =0;
+        img_buf[q] = 0;
       }
     }
   }
