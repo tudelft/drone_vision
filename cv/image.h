@@ -83,7 +83,14 @@ struct crop_t {
   uint16_t h;    ///< height of the cropped area
 };
 
-/* Usefull image functions */
+// common colors
+extern uint8_t yuv_black[3];
+extern uint8_t yuv_gray[3];
+extern uint8_t yuv_white[3];
+extern uint8_t yuv_green[3];
+extern uint8_t yuv_red[3];
+
+/* Useful image functions */
 #ifdef LINUX
 void image_create(struct image_t *img, uint16_t width, uint16_t height, enum image_type type);
 void image_free(struct image_t *img);
@@ -94,10 +101,16 @@ void image_switch(struct image_t *a, struct image_t *b);
 void image_to_grayscale(struct image_t *input, struct image_t *output);
 uint16_t image_yuv422_colorfilt(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M, uint8_t u_m,
                                 uint8_t u_M, uint8_t v_m, uint8_t v_M);
+
 struct point_t yuv_colorfilt_centroid(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M, uint8_t u_m,
         uint8_t u_M, uint8_t v_m, uint8_t v_M, uint8_t DOP, uint8_t line_mode);
-struct point_t color_obstacle_detection(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M, uint8_t u_m,
-        uint8_t u_M, uint8_t v_m, uint8_t v_M, uint8_t DOP, uint8_t line_mode, struct roi_t segments[], uint16_t max_segments);
+uint16_t color_obstacle_detection(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M,
+                                uint8_t u_m, uint8_t u_M, uint8_t v_m, uint8_t v_M,
+                                uint8_t DOP, uint8_t line_mode, struct roi_t segments[], uint16_t max_segments);
+struct point_t color_obstacle_detection_with_keepout(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M,
+                                uint8_t u_m, uint8_t u_M, uint8_t v_m, uint8_t v_M,
+                                uint8_t DOP, uint8_t line_mode, uint16_t keep_out_min, uint16_t keep_out_max);
+
 void image_yuv422_downsample(struct image_t *input, struct image_t *output, uint16_t downsample);
 void image_subpixel_window(struct image_t *input, struct image_t *output, struct point_t *center,
                            uint32_t subpixel_factor, uint8_t border_size);
