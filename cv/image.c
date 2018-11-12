@@ -314,6 +314,146 @@ struct point_t yuv_colorfilt_centroid(struct image_t *input, struct image_t *out
     centroid.y = y_sum / correct_hits;
   }
 
+
+  return centroid;
+}
+
+
+/* yuv_colorfilt_centroid Run color filter with defined Degree of Precision (DOP) and search mode
+ *
+ * input Input image to run color filter on
+ * output Output image to draw filtered image. If set to NULL, will not draw
+ * DOP: degree of precision is a percentage of image to be searched
+ * line_mode : 0 = lines spread evenly throughout image
+ *             1 = lines all at top of image
+ *             2 = lines all in middle of image
+ *             3 = lines all at bottom of image
+ *  return Centroid of color obstacles found. If none found, returns (-1, -1)
+ */
+struct point_t yuv_colorfilt_line(struct image_t *input, struct image_t *output, uint8_t y_m, uint8_t y_M, uint8_t u_m,
+                                uint8_t u_M, uint8_t v_m, uint8_t v_M, int32_t *fit, int32_t *slope)
+{
+  bool draw_output = true;
+  if (output == NULL) { draw_output = false; }
+
+  uint8_t *source = (uint8_t *)input->buf;
+  uint8_t *dest;
+
+  if (draw_output) {
+    dest = (uint8_t *)output->buf;
+    output->ts = input->ts;  // Copy the creation timestamp (stays the same)
+  } else {
+    dest = 0;
+  }
+
+  struct point_t points[256];  //points which are, supposedly, on the line
+  struct point_t centroid;
+  uint32_t i = 0, j = 0;
+  uint32_t x_sum = 0, y_sum = 0;
+  uint32_t correct_hits = 0;
+
+  while ( i < 1024 && j < 256){
+    uint16_t x = rand() % input->w;
+    uint16_t y = rand() % input->h;
+    int32_t loc = (x + input->w * y)*2;
+    if (source[loc + 1] >= y_m && source[loc + 1] <= y_M ){
+      if(x % 2 == 0) {
+        if(source[loc] >= u_m && source[loc] <= u_M  && source[loc + 2] >= v_m && source[loc + 2] <= v_M )
+        {
+          points[j].x = x;
+          points[j].y = y;
+          j++;
+          x_sum += x;
+          y_sum += y;
+          correct_hits++;
+        }
+      } else {
+        if(source[loc] >= v_m && source[loc] <= v_M  && source[loc - 2] >= u_m && source[loc - 2]  <= u_M )
+        {
+          points[j].x = x;
+          points[j].y = y;
+          j++;
+          x_sum += x;
+          y_sum += y;
+          correct_hits++;
+        }
+      }
+    }
+    i++;
+    // compute centroid
+    centroid.x = x_sum/correct_hits;
+    centroid.y = y_sum/correct_hits;
+  }
+  // perform line approximation
+  int32_t intercept;
+  *fit = line_fit_2D_vertical(points, j, 100, slope, &intercept);
+
+  // send test values
+
+
+  struct point_t start = {0,0};
+  struct point_t end = {3,50};
+
+  //show the line approximation
+  if(draw_output && j>0){
+    image_show_points(output, points, j);
+    uint8_t points_found = 0; //number of points found on border
+    float intercept_float = intercept/100.f;
+    float slope_float = *slope/100.f;
+    if(intercept_float>0 && intercept_float < input->w)
+    {
+      start.x = (int)intercept_float;
+      start.y = 0;
+      points_found++;
+    }
+    if (abs(*slope)>1e-5){
+    uint8_t y_2 = (int)((input->w-intercept_float)/(slope_float)); //y_value of the interception with the right side of the picture
+    if(y_2 >=0 && y_2 < input->h){
+      if (points_found ==0){
+        start.x = input->w-1;
+        start.y = y_2;
+        points_found ++;
+      }
+      else
+      {
+        end.x = input->w-1;
+        end.y = y_2;
+        points_found ++;
+      }
+    }
+    }
+    uint8_t x_3 = (int)(slope_float*input->h+intercept_float);
+    if (x_3 >=0 && x_3 < input->w){
+      if(points_found ==0){
+        start.x = x_3;
+        start.y = input->h-1;
+        points_found ++;
+      }
+      else if(points_found ==1)
+       {
+         end.x = x_3;
+         end.y = input->h-1;
+         points_found ++;
+       }
+      }
+    uint8_t y_4 = -(uint8_t)(intercept/ *slope);
+    if(y_4 >=0 && y_4 < input->h){
+        if(points_found ==0){
+          start.x = 0;
+          start.y = y_4;
+          points_found++;
+        }
+        else if (points_found ==1){
+          end.x = 0;
+          end.y = y_4;
+          points_found++;
+        }
+    }
+
+    image_draw_line(output, &start, &end, yuv_red);
+
+  }
+
   return centroid;
 }
 
