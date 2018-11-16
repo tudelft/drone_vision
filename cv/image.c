@@ -406,7 +406,7 @@ struct point_t yuv_colorfilt_line(struct image_t *input, struct image_t *output,
       start.y = 0;
       points_found++;
     }
-    if (abs(*slope)>1e-5){
+    if (abs(*slope)>0){
     uint8_t y_2 = (int)((input->w-intercept_float)/(slope_float)); //y_value of the interception with the right side of the picture
     if(y_2 >=0 && y_2 < input->h){
       if (points_found ==0){
@@ -646,9 +646,10 @@ struct point_t color_obstacle_detection_with_keepout(struct image_t *input, stru
     dest_init = 0;
   }
 
-  uint16_t num_lines = (input->h * DOP) / 100;
+  uint16_t num_lines = (input->h * DOP) / 100; //number of lines to be checked (maximum)
   float y_inrc = 1.f;
   uint32_t y_start = 0;
+  // switch to a line mode, different line selection
   switch (line_mode){
     case 0:
       y_inrc = (float)input->h / num_lines;
@@ -675,6 +676,7 @@ struct point_t color_obstacle_detection_with_keepout(struct image_t *input, stru
 
   uint8_t *source = source_init;
   uint8_t *dest   = dest_init;
+  uint8_t min_obs_with = 1;
 
   float keepout_grad = (float)(keep_out_max - keep_out_min) / input->h;
   uint16_t keepout_l, keepout_r;
@@ -714,7 +716,7 @@ struct point_t color_obstacle_detection_with_keepout(struct image_t *input, stru
           hit = true;
         }
 
-        if (!hit) { break; }
+        if (!hit) { break; } //go to the next x-coordinate if no obstacle is detected
         sum_x += x;
         num_points++;
 
@@ -739,7 +741,7 @@ struct point_t color_obstacle_detection_with_keepout(struct image_t *input, stru
           segment.br = last_point;
 
           segment_cnt = 0;
-          if (segment.tl.x + 4 < segment.br.x &&
+          if (segment.tl.x + min_obs_with < segment.br.x &&
               ((segment.tl.x > keepout_l && segment.br.x < keepout_r) || // inside lines
                (segment.tl.x < keepout_l && segment.br.x > keepout_l) || // crosses left
                (segment.tl.x < keepout_r && segment.br.x > keepout_r))) { // crosses right
@@ -765,11 +767,12 @@ struct point_t color_obstacle_detection_with_keepout(struct image_t *input, stru
     if(segment_cnt){
       // segment ended by line end
       segment.br = last_point;
-      if (segment.tl.x + 4 < segment.br.x &&
+      if (segment.tl.x + min_obs_with < segment.br.x &&
           ((segment.tl.x > keepout_l && segment.br.x < keepout_r) || // inside lines
            (segment.tl.x < keepout_l && segment.br.x > keepout_l) || // crosses left
            (segment.tl.x < keepout_r && segment.br.x > keepout_r))) { // crosses right
         // only detect obstacle if inside of keepout zone and if long enough
+        found_obstacle=true;
       }
       segment_cnt = 0;
     }
