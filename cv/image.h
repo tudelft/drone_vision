@@ -122,6 +122,7 @@ void image_calculate_g(struct image_t *dx, struct image_t *dy, int32_t *g);
 uint32_t image_difference(struct image_t *img_a, struct image_t *img_b, struct image_t *diff);
 int32_t image_multiply(struct image_t *img_a, struct image_t *img_b, struct image_t *mult);
 void image_show_points(struct image_t *img, struct point_t *points, uint16_t points_cnt);
+void image_show_points_color(struct image_t *img, struct point_t *points, uint16_t points_cnt, uint8_t *color);
 void image_show_flow(struct image_t *img, struct flow_t *vectors, uint16_t points_cnt, uint8_t subpixel_factor);
 void image_draw_line(struct image_t *img, struct point_t *from, struct point_t *to, uint8_t *color);
 void image_draw_circle(struct image_t *img, struct point_t *center, uint16_t radius, uint8_t *color);

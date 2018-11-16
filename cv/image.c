@@ -1369,6 +1369,38 @@ void image_show_points(struct image_t *img, struct point_t *points, uint16_t poi
 }
 
 /**
+ * Show points in an image by coloring them through giving
+ * the pixels the maximum value.
+ * This works with YUV422 and grayscale images
+ * @param[in,out] *img The image to place the points on
+ * @param[in] *points The points to sohw
+ * @param[in] *points_cnt The amount of points to show
+ */
+void image_show_points_color(struct image_t *img, struct point_t *points, uint16_t points_cnt, uint8_t color[])
+{
+  uint8_t *img_buf = (uint8_t *)img->buf;
+  uint8_t pixel_width = (img->type == IMAGE_YUV422) ? 2 : 1;
+
+  // Go trough all points and color them
+  for (int i = 0; i < points_cnt; i++) {
+    uint32_t idx = pixel_width * points[i].y * img->w + points[i].x * pixel_width;
+    img_buf[idx] = color[0];
+
+    // YUV422 consists of 2 pixels
+    if (img->type == IMAGE_YUV422) {
+      img_buf[idx+1] = color[0];
+      if (points[i].x % 2){
+        img_buf[idx] = color[2];
+        img_buf[idx+2] = color[1];
+      } else {
+        img_buf[idx] = color[1];
+        img_buf[idx+2] = color[2];
+      }
+    }
+  }
+}
+
+/**
  * Shows the flow from a specific point to a new point
  * This works on YUV422 and Grayscale images
  * @param[in,out] *img The image to show the flow on
